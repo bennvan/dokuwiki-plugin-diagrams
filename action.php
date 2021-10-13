@@ -17,6 +17,7 @@ class action_plugin_diagrams extends DokuWiki_Action_Plugin
         $controller->register_hook('MEDIAMANAGER_STARTED', 'AFTER', $this, 'addJsinfo');
         $controller->register_hook('DOKUWIKI_STARTED', 'AFTER', $this, 'checkConf');
         $controller->register_hook('AJAX_CALL_UNKNOWN', 'BEFORE', $this, 'handleAjax');
+        $controller->register_hook('PLUGIN_MOVE_HANDLERS_REGISTER', 'BEFORE', $this, 'handle_move_register');
     }
 
     /**
@@ -105,5 +106,13 @@ class action_plugin_diagrams extends DokuWiki_Action_Plugin
         $confServiceUrl = $this->getConf('service_url'); // like "https://diagrams.xyz.org/?embed=1&..."
         $serviceHost = parse_url($confServiceUrl, PHP_URL_HOST); // Host-Portion of the Url, e.g. "diagrams.xyz.org"
         return strpos($begin, 'embed.diagrams.net') || strpos($begin, 'draw.io') || strpos($begin, $serviceHost);
+    }
+
+    public function handle_move_register(Doku_Event $event, $params) {
+        $event->data['handlers']['diagrams'] = array($this, 'rewrite_diagram');
+    }
+
+    public function rewrite_diagram($match, $state, $pos, $pluginname, helper_plugin_move_handler $handler) {
+        $handler->media($match, $state, $pos);
     }
 }

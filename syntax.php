@@ -40,7 +40,15 @@ class syntax_plugin_diagrams extends DokuWiki_Syntax_Plugin {
      */
     public function handle($match, $state, $pos, Doku_Handler $handler)
     {
-        return Doku_Handler_Parse_Media($match);
+        $p = Doku_Handler_Parse_Media($match);
+
+        $handler->addCall(
+                    $p['type'],
+                    array($p['src'], $p['title'], $p['align'], $p['width'],
+                    $p['height'], $p['cache'], $p['linking'], true),
+                    null
+                );
+        return $p;
     }
 
     /**
