@@ -88,6 +88,10 @@ function splitFullId(fullId) {
 function extractIdFromMediaUrl(url) {
     const urlObj = new URL(url);
     let path = urlObj.pathname;
+    // if we have a leading slash
+    if (path.indexOf('/') === 0) {
+        path = path.substr(1);
+    }
     if (path.indexOf(DOKU_BASE) === 0) {
         path = path.substr(DOKU_BASE.length);
     }
