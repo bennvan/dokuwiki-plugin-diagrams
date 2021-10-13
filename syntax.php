@@ -56,6 +56,12 @@ class syntax_plugin_diagrams extends DokuWiki_Syntax_Plugin {
     {
         if ($format !== 'xhtml') return false;
 
+        global $ID;
+
+        if ($data['type'] == 'internalmedia') {
+            resolve_mediaid(getNS($ID), $data['src'], $exists, $renderer->date_at, true);
+        }
+
         if(is_a($renderer, 'renderer_plugin_dw2pdf')) {
             $imageAttributes = array(
                 'class'   => 'media',
