@@ -1,0 +1,11 @@
+.diagrams-overflow {
+	overflow-x: auto;
+}
+
+.diagrams-responsive object {
+	width: 100%;
+}
+
+.diagrams-svg.media {
+   margin-top: 0.8rem;
+}

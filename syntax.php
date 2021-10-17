@@ -40,14 +40,22 @@ class syntax_plugin_diagrams extends DokuWiki_Syntax_Plugin {
      */
     public function handle($match, $state, $pos, Doku_Handler $handler)
     {
-        $p = Doku_Handler_Parse_Media($match);
+        // Remove responsive flag
+        $count = false;
+        $match = preg_replace('/&?responsive&?/', '', $match, 1, $count);
 
+        $p = Doku_Handler_Parse_Media($match);
+        
         $handler->addCall(
                     $p['type'],
                     array($p['src'], $p['title'], $p['align'], $p['width'],
                     $p['height'], $p['cache'], $p['linking'], true),
                     null
                 );
+
+        // Do we let the svg be responsive or scroll overflow?
+        $p['wrapper_class'] = ($count) ? 'diagrams-responsive' : 'diagrams-overflow';
+
         return $p;
     }
 
@@ -83,7 +91,7 @@ class syntax_plugin_diagrams extends DokuWiki_Syntax_Plugin {
         } else {
             $width = $data['width'] ? 'width="' . $data['width'] . '"' : '';
             $height = $data['height'] ? 'height="' . $data['height'] . '"' : '';
-            $tag = '<object data="%s&cache=nocache" type="image/svg+xml" class="diagrams-svg media%s" %s %s></object>';
+            $tag = '<div class="'.$data['wrapper_class'].' geDiagramContainer"><object data="%s&cache=nocache" type="image/svg+xml" class="diagrams-svg media%s" %s %s></object></div>';
             $renderer->doc .= sprintf($tag, ml($data['src']), $data['align'], $width, $height);
         }
 
