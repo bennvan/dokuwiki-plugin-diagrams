@@ -3,7 +3,7 @@
 }
 
 .diagrams-responsive object {
-	width: 100%;
+	max-width: 100%;
 }
 
 .diagrams-svg.media {
