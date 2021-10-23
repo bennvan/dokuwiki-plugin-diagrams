@@ -57,9 +57,64 @@ class action_plugin_diagrams extends DokuWiki_Action_Plugin
         $event->stopPropagation();
 
         global $INPUT;
-        $images = $INPUT->arr('images');
+        global $conf;
+        
+        $action = $INPUT->str('action');
 
-        echo json_encode($this->editableDiagrams($images));
+        if ($action == 'savepng') {
+            if (!$this->getConf('exportPng')) {
+                return http_response_code(200);
+            }
+            // Write content to file
+            $fid = $INPUT->str('id');
+            $media_id = cleanID($fid);
+            $media_path = mediaFN($media_id);
+
+            // Check for appropriate permissions
+            if (auth_quickaclcheck($media_path) < AUTH_UPLOAD) {
+                return http_response_code(403);
+            }
+
+            // Save old revision
+            if ($this->getConf('mediaRevisionsOnExtra')) {
+                $old = @filemtime($media_path);
+                if(!file_exists(mediaFN($media_id, $old)) && file_exists($media_path)) {
+                    // add old revision to the attic if missing
+                    media_saveOldRevision($media_id);
+                }
+                $filesize_old = file_exists($media_path) ? filesize($media_path) : 0;
+            }
+
+            // Write the content to file. We know this namespace must already exist. This occuers after svg save
+            $content = $INPUT->str('content');
+            $base64data = explode(",", $content)[1];
+            $whandle = fopen($media_path, 'w');
+            fwrite($whandle,base64_decode($base64data));
+            fclose($whandle);
+
+            // clear cache time
+            @clearstatcache(true, $media_path);
+            $new = @filemtime($media_path);
+            chmod($media_path, $conf['fmode']);
+
+            // Add to log history
+            if ($this->getConf('mediaRevisionsOnExtra')) {
+                $filesize_new = filesize($media_path);
+                $sizechange = $filesize_new - $filesize_old;
+                if ($filesize_old != 0) {
+                    addMediaLogEntry($new, $media_id, DOKU_CHANGE_TYPE_EDIT, '', '', null, $sizechange);
+                } else {
+                    addMediaLogEntry($new, $media_id, DOKU_CHANGE_TYPE_CREATE, $lang['created'], '', null, $sizechange);
+                }
+            }
+
+            return http_response_code(200);
+
+        } else {
+            // Checking permissions of images
+           $images = $INPUT->arr('images');
+           echo json_encode($this->editableDiagrams($images)); 
+        }
     }
 
     /**

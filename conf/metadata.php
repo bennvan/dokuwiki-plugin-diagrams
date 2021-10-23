@@ -5,3 +5,5 @@
  * @author    Chris G. <githubkoma@weycloud.de>
  */
 $meta['service_url']  = array('string');
+$meta['exportPng'] = array('onoff');
+$meta['mediaRevisionsOnExtra'] = array('onoff');

@@ -10,3 +10,5 @@ $lang['js']['errorInvalidId'] = 'Name is empty or contains invalid characters!';
 $lang['js']['errorSaving'] = 'Saving failed';
 $lang['js']['errorUnsupportedFormat'] = 'Unsupported file format!';
 $lang['js']['saving'] = 'Saving';
+$lang['js']['saveSuccess'] = 'Saved successfully. Press OK to exit diagrams or cancel to continue editing';
+$lanf['js']['filenameError'] = 'Filename Error! Aborting png save to prevent override';
