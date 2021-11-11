@@ -74,6 +74,12 @@ class syntax_plugin_diagrams extends DokuWiki_Syntax_Plugin {
 
         global $ID;
 
+        if ($data['linking'] === 'linkonly') {
+            $renderer->internalmedia($data['src'], $data['title'], $data['align'], $data['width'], $data['height'],
+                $data['cache'], $data['linking']);
+            return true;
+        }
+
         if ($data['type'] == 'internalmedia') {
             resolve_mediaid(getNS($ID), $data['src'], $exists, $renderer->date_at, true);
         }
