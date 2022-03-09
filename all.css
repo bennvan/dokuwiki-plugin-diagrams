@@ -4,8 +4,12 @@
 
 .diagrams-responsive object {
 	max-width: 100%;
+   height: auto;
+   opacity: 1;
+   transition: background 0.5s,opacity 0.5s,transform 0.5s;
 }
 
+    
 .diagrams-svg.media {
    margin-top: 0.8rem;
 }
