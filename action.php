@@ -71,7 +71,7 @@ class action_plugin_diagrams extends DokuWiki_Action_Plugin
             $media_path = mediaFN($media_id);
 
             // Check for appropriate permissions
-            if (auth_quickaclcheck($media_path) < AUTH_UPLOAD) {
+            if (auth_quickaclcheck($media_id) < AUTH_UPLOAD) {
                 return http_response_code(403);
             }
 
@@ -128,11 +128,11 @@ class action_plugin_diagrams extends DokuWiki_Action_Plugin
         $editable = [];
 
         foreach ($images as $image) {
-            if (auth_quickaclcheck($image) >= AUTH_UPLOAD && $this->isDiagram($image)) {
+            $img_id = ($image[0] == ':') ? substr($image, 1) : $image;
+            if (auth_quickaclcheck($img_id) >= AUTH_UPLOAD && $this->isDiagram($image)) {
                 $editable[] = $image;
             }
         }
-
         return $editable;
     }
 
