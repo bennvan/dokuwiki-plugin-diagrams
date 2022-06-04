@@ -1,0 +1,4 @@
+a:hover>rect:not([transform]) {
+	outline:5px solid #363636d1; 
+	border-radius: 2px;
+}

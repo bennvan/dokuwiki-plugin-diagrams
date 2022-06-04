@@ -30,6 +30,7 @@ class action_plugin_diagrams extends DokuWiki_Action_Plugin
         global $JSINFO;
         $JSINFO['sectok'] = getSecurityToken();
         $JSINFO['plugins']['diagrams']['service_url'] = $this->getConf('service_url');
+        $JSINFO['plugins']['diagrams']['xsvg_style'] = $this->getConf('xsvg_style');
     }
 
     /**
