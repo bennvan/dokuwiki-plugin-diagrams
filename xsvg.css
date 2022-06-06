@@ -1,8 +1,8 @@
-a:hover>rect:not([transform]) {
+a:hover>rect:last-of-type {
 	outline:5px solid #363636d1; 
 	border-radius: 2px;
 }
 
-a:hover>rect[stroke="none"]:not([transform]) {
+a:hover>rect[stroke="none"]:last-of-type {
 	stroke: rgb(0,0,0,0);
 }
