@@ -122,9 +122,16 @@ jQuery(window).on('load', function() {
             if (!target) return;
             if (target.startsWith('#')){
                 e.preventDefault();
-                document.querySelector(target).scrollIntoView({
-                    behavior: 'smooth'
-                });
+
+                var y;
+                var yOffset = 0; 
+                var navbar = document.getElementById('dw__navbar');
+                if (navbar) {
+                    yOffset = -navbar.offsetHeight; 
+                }
+                history.replaceState({}, '', window.location.href+target);
+                y = document.querySelector(target).getBoundingClientRect().top + window.pageYOffset + yOffset;
+                window.scrollTo({top: y, behavior: 'smooth'});
             }
         });
         if (JSINFO.plugins.diagrams.xsvg_style) {
