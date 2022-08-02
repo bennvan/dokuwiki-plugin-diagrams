@@ -117,9 +117,19 @@ jQuery(function () {
 jQuery(window).on('load', function() {
     jQuery('object.diagrams-svg').each( function() {
         const $svg   = jQuery(this.contentDocument).find('svg');
-        $svg.find('a').not('[target]').attr('target', '_parent');
+        $svg.find('a').not('[target]').attr('target', '_parent').on('click',function (e) {
+            var target = jQuery(this).attr('xlink:href');
+            if (!target) return;
+            if (target.startsWith('#')){
+                e.preventDefault();
+                document.querySelector(target).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            }
+        });
         if (JSINFO.plugins.diagrams.xsvg_style) {
             $svg.append("<link xmlns='http://www.w3.org/1999/xhtml' rel='stylesheet' type='text/css' href='/lib/plugins/diagrams/xsvg.css' />");
         }
+
     });
 });
