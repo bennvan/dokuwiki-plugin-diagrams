@@ -3,16 +3,19 @@
  *
  * @returns {jQuery|HTMLElement}
  */
-function newDiagramForm() {
+function newDiagramForm(ns) {
     const $createForm = jQuery(
-        '<div><form>' +
+        '<div class="diagrams-create-dialog"><form class="diagrams-create-form">' +
         '<p>' + LANG.plugins.diagrams.createIntro + ' <strong><span id="diagrams__current-ns">' +
-        '</strong></span></p>' +
-        '<input type="text" class="edit" name="diagrams-create-filename" id="diagrams__create-filename" />' +
-        '<button id="diagrams__create" class="edit">' + LANG.plugins.diagrams.createButton + '</button>' +
+        '</span></strong></p>' +
+        '<label for="diagrams__create-filename">' + LANG.plugins.diagrams.filenameLabel + '</label>' +
+        '<input type="text" class="edit" name="diagrams-create-filename" id="diagrams__create-filename" required />' +
+        '<button type="submit" id="diagrams__create" class="button">' + LANG.plugins.diagrams.createButton + '</button>' +
         '</form></div>'
     );
 
+    $createForm.find('form').data('namespace', ns);
+    $createForm.find('#diagrams__current-ns').text(ns ? ':' + ns : ':');
     jQuery( $createForm ).on( 'submit', createDiagram );
 
     return $createForm;
@@ -26,16 +29,18 @@ function newDiagramForm() {
 function createDiagram(event) {
     event.preventDefault();
 
-    const ns = jQuery('#diagrams__current-ns').html();
-    const id = jQuery('#diagrams__create-filename').val();
+    const $form = jQuery(event.target);
+    const ns = $form.data('namespace');
+    const id = $form.find('#diagrams__create-filename').val().trim();
 
     if (!validId(id)) {
         alert(LANG.plugins.diagrams.errorInvalidId);
         return;
     }
 
-    const fullIdArray = [ns, id];
-    launchEditor({data:{fullId: fullIdArray.join(':') + '.svg'}});
+    const name = id.replace(/^:/, '').replace(/\.svg$/i, '') + '.svg';
+    launchEditor({data:{fullId: [ns, name].filter(Boolean).join(':')}});
+    $form.closest('.ui-dialog-content').dialog('close');
 }
 
 /**
@@ -46,10 +51,8 @@ function createDiagram(event) {
  */
 function editDiagramButton(fullId) {
     const $editButton = jQuery(
-        '<button type="submit" class="diagrams-btn" data-id="' +
-        fullId +
-        '">' + LANG.plugins.diagrams.editButton + '</button>'
-    );
+        '<button type="button" class="diagrams-btn"/>'
+    ).attr('data-id', fullId).text(LANG.plugins.diagrams.editButton);
     jQuery( $editButton ).on( 'click', {fullId: fullId}, launchEditor );
 
     return $editButton;
@@ -60,9 +63,12 @@ function editDiagramButton(fullId) {
  */
 const launchEditor = function(event) {
     const fullId = event.data.fullId;
+    const url = diagramServiceUrl();
+    if (!url) { alert(LANG.plugins.diagrams.errorServiceUrl); return; }
     if (!jQuery('#diagrams-frame')[0]) {
-        jQuery('body').append('<iframe id="diagrams-frame" style="border: 0;position: fixed; top: 0; left: 0; right:0; bottom: 0; width:100%; height:100%; z-index: 9999;"></iframe>');
+        jQuery('<iframe id="diagrams-frame" style="border: 0;position: fixed; top: 0; left: 0; right:0; bottom: 0; width:100%; height:100%; z-index: 9999;"/>')
+            .attr('title', LANG.plugins.diagrams.editorTitle).appendTo('body');
         jQuery(window).on('message', {fullId: fullId}, handleServiceMessages);
-        jQuery('#diagrams-frame').attr('src', JSINFO['plugins']['diagrams']['service_url']);
+        jQuery('#diagrams-frame').attr('src', url.href);
     }
 };

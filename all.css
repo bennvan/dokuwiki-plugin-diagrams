@@ -13,3 +13,22 @@
 .diagrams-svg.media {
    margin-top: 0.8rem;
 }
+
+#media__content > .diagrams-create-action {
+    margin-bottom: 1em;
+}
+
+.diagrams-create-form {
+    margin: .75em 0;
+}
+
+.diagrams-create-form label {
+    display: block;
+}
+
+.diagrams-create-form input.edit {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    margin-bottom: .5em;
+}

@@ -17,7 +17,22 @@ class action_plugin_diagrams extends DokuWiki_Action_Plugin
         $controller->register_hook('MEDIAMANAGER_STARTED', 'AFTER', $this, 'addJsinfo');
         $controller->register_hook('DOKUWIKI_STARTED', 'AFTER', $this, 'checkConf');
         $controller->register_hook('AJAX_CALL_UNKNOWN', 'BEFORE', $this, 'handleAjax');
+        $controller->register_hook('MEDIA_SENDFILE', 'BEFORE', $this, 'allowEmbeddedDiagramImages');
         $controller->register_hook('PLUGIN_MOVE_HANDLERS_REGISTER', 'BEFORE', $this, 'handle_move_register');
+    }
+
+    /** Allow images embedded in local diagram SVGs; keep scripts and remote loads blocked. */
+    public function allowEmbeddedDiagramImages(Doku_Event $event)
+    {
+        $data = &$event->data;
+        if ($data['mime'] !== 'image/svg+xml' || media_isexternal($data['media']) ||
+            !$this->isDiagramFile($data['file'])) return;
+
+        $sources = $data['csp']['img-src'] ?? [];
+        if (is_string($sources)) $sources = preg_split('/\s+/', trim($sources));
+        $sources = array_diff($sources, ["'none'", '']);
+        $sources[] = 'data:';
+        $data['csp']['img-src'] = array_values(array_unique($sources));
     }
 
     /**
@@ -31,6 +46,7 @@ class action_plugin_diagrams extends DokuWiki_Action_Plugin
         $JSINFO['sectok'] = getSecurityToken();
         $JSINFO['plugins']['diagrams']['service_url'] = $this->getConf('service_url');
         $JSINFO['plugins']['diagrams']['xsvg_style'] = $this->getConf('xsvg_style');
+        $JSINFO['plugins']['diagrams']['exportPng'] = (bool) $this->getConf('exportPng');
     }
 
     /**
@@ -59,22 +75,47 @@ class action_plugin_diagrams extends DokuWiki_Action_Plugin
 
         global $INPUT;
         global $conf;
+        global $lang;
         
         $action = $INPUT->str('action');
 
         if ($action == 'savepng') {
+            if ($INPUT->server->str('REQUEST_METHOD') !== 'POST' || !checkSecurityToken($INPUT->post->str('sectok'))) {
+                return http_response_code(403);
+            }
             if (!$this->getConf('exportPng')) {
                 return http_response_code(200);
             }
             // Write content to file
-            $fid = $INPUT->str('id');
+            $fid = $INPUT->post->str('id');
             $media_id = cleanID($fid);
             $media_path = mediaFN($media_id);
 
             // Check for appropriate permissions
-            if (auth_quickaclcheck($media_id) < AUTH_UPLOAD) {
+            $auth = auth_quickaclcheck(mediaAclPath($media_id));
+            if ($auth < AUTH_UPLOAD || (file_exists($media_path) && !$conf['mediarevisions'] && $auth < AUTH_DELETE)) {
                 return http_response_code(403);
             }
+
+            $content = $INPUT->post->str('content');
+            if ((getMimeTypes()['png'] ?? null) !== 'image/png' ||
+                !str_ends_with($media_id, '.png') || !str_starts_with($content, 'data:image/png;base64,')) {
+                return http_response_code(400);
+            }
+            $png = base64_decode(substr($content, strlen('data:image/png;base64,')), true);
+            $info = $png === false || $png === '' ? false : @getimagesizefromstring($png);
+            if (!$info || $info[2] !== IMAGETYPE_PNG) return http_response_code(400);
+            // Use the core content checks before writing or saving a revision.
+            $temp = tempnam($conf['tmpdir'], 'diagrams-');
+            if ($temp === false) return http_response_code(500);
+            try {
+                if (file_put_contents($temp, $png) !== strlen($png)) return http_response_code(500);
+                if (media_contentcheck($temp, 'image/png') !== 0) return http_response_code(400);
+            } finally {
+                unlink($temp);
+            }
+            // A successful SVG upload creates this directory before PNG export starts.
+            if (!is_dir(dirname($media_path))) return http_response_code(400);
 
             // Save old revision
             if ($this->getConf('mediaRevisionsOnExtra')) {
@@ -86,12 +127,7 @@ class action_plugin_diagrams extends DokuWiki_Action_Plugin
                 $filesize_old = file_exists($media_path) ? filesize($media_path) : 0;
             }
 
-            // Write the content to file. We know this namespace must already exist. This occuers after svg save
-            $content = $INPUT->str('content');
-            $base64data = explode(",", $content)[1];
-            $whandle = fopen($media_path, 'w');
-            fwrite($whandle,base64_decode($base64data));
-            fclose($whandle);
+            if (!io_saveFile($media_path, $png)) return http_response_code(500);
 
             // clear cache time
             @clearstatcache(true, $media_path);
@@ -113,6 +149,7 @@ class action_plugin_diagrams extends DokuWiki_Action_Plugin
 
         } else {
             // Checking permissions of images
+           header('Content-Type: application/json; charset=utf-8');
            $images = $INPUT->arr('images');
            echo json_encode($this->editableDiagrams($images)); 
         }
@@ -129,8 +166,10 @@ class action_plugin_diagrams extends DokuWiki_Action_Plugin
         $editable = [];
 
         foreach ($images as $image) {
-            $img_id = ($image[0] == ':') ? substr($image, 1) : $image;
-            if (auth_quickaclcheck($img_id) >= AUTH_UPLOAD && $this->isDiagram($image)) {
+            if (!is_string($image) || $image === '') continue;
+            $img_id = cleanID(explode('&', $image, 2)[0]);
+            if (!str_ends_with($img_id, '.svg')) continue;
+            if (auth_quickaclcheck(mediaAclPath($img_id)) >= AUTH_UPLOAD && $this->isDiagram($img_id)) {
                 $editable[] = $image;
             }
         }
@@ -146,22 +185,20 @@ class action_plugin_diagrams extends DokuWiki_Action_Plugin
      */
     protected function isDiagram($image)
     {
-        global $conf;
-        // strip nocache parameters from image
-        $image = explode('&', $image);
-        $image = $image[0];
+        $file = mediaFN(cleanID(explode('&', $image, 2)[0]));
+        return $this->isDiagramFile($file);
+    }
 
-        $file = DOKU_INC .
-            $conf['savedir'] .
-            DIRECTORY_SEPARATOR .
-            'media' .
-            DIRECTORY_SEPARATOR .
-            preg_replace(['/:/'], [DIRECTORY_SEPARATOR], $image);
-
+    /** Inspect the actual file being served, including historical revisions. */
+    protected function isDiagramFile($file)
+    {
+        if (!is_file($file) || !is_readable($file)) return false;
         $begin = file_get_contents($file, false, null, 0, 500);
+        if ($begin === false) return false;
         $confServiceUrl = $this->getConf('service_url'); // like "https://diagrams.xyz.org/?embed=1&..."
         $serviceHost = parse_url($confServiceUrl, PHP_URL_HOST); // Host-Portion of the Url, e.g. "diagrams.xyz.org"
-        return strpos($begin, 'embed.diagrams.net') || strpos($begin, 'draw.io') || strpos($begin, $serviceHost);
+        return str_contains($begin, 'embed.diagrams.net') || str_contains($begin, 'draw.io') ||
+            (is_string($serviceHost) && $serviceHost !== '' && str_contains($begin, $serviceHost));
     }
 
     public function handle_move_register(Doku_Event $event, $params) {

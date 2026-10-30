@@ -1,5 +1,13 @@
 const doctypeXML = '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">';
 
+/** Reject executable/data URLs before creating an editor iframe. */
+function diagramServiceUrl() {
+    try {
+        const url = new URL(JSINFO.plugins.diagrams.service_url, location.href);
+        return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url : null;
+    } catch (e) { return null; }
+}
+
 /**
  * Return the diagrams editor object or false
  * if it does not exist.
@@ -25,22 +33,13 @@ function removeDiagramsEditor(handler) {
 }
 
 /**
- * Explicitly disable caching of the AJAX request.
- */
-function disableRequestCaching() {
-    jQuery.ajaxSetup({
-        cache: false,
-    });
-}
-
-/**
  * check if name/id of new diagram is valid
  *
  * @param id
  * @returns {boolean}
  */
 function validId(id) {
-    return id.length > 0 && /^[\w][\w\.\-]*$/.test(id)
+    return /^:?[\w][\w.\-]*(?::[\w][\w.\-]*)*$/.test(id);
 }
 
 /**
@@ -48,7 +47,25 @@ function validId(id) {
  * because it is not a real namespace
  */
 function cleanNs (text) {
-    return text.replace(/^\[.*\]$/, '');
+    return text.trim().replace(/^\[.*\]$/, '').replace(/^:+|:+$/g, '');
+}
+
+/** Read the file-list namespace, never the neighbouring file-details heading. */
+function currentMediaNamespace() {
+    const $files = jQuery('#mediamanager__page div.filelist').first();
+    const $context = $files.length ? $files : jQuery('#media__content');
+    const $nsInput = $context.find('input[name="ns"]').first();
+    if ($nsInput.length) return cleanNs($nsInput.val());
+
+    const $tab = $files.children('ul.tabs').find('a[href*="tab_files="]').first();
+    if ($tab.length) {
+        const url = new URL($tab[0].href, location.href);
+        if (url.searchParams.has('ns')) return cleanNs(url.searchParams.get('ns'));
+    }
+
+    return cleanNs($files.length
+        ? $files.children('.panelHeader').find('h3 strong').first().text()
+        : jQuery('#media__ns').text());
 }
 
 /**
@@ -59,7 +76,9 @@ function cleanNs (text) {
  * @returns {string}
  */
 function getLocalDiagramUrl(ns, id) {
-    return DOKU_BASE + 'lib/exe/ajax.php?call=mediaupload&ow=true&ns=' + ns + '&qqfile=' + id + '&sectok=' + JSINFO['sectok'];
+    return DOKU_BASE + 'lib/exe/ajax.php?' + jQuery.param({
+        call: 'mediaupload', ow: true, ns: ns, qqfile: id, sectok: JSINFO.sectok
+    });
 }
 
 /**
@@ -73,7 +92,7 @@ function splitFullId(fullId) {
     let ns = '';
     const idParts = id.split(':');
     if (idParts.length > 1) {
-        id = idParts.pop(idParts);
+        id = idParts.pop();
         ns = idParts.join(':');
     }
     return {ns: ns, id: id};
@@ -86,32 +105,36 @@ function splitFullId(fullId) {
  * @returns {string}
  */
 function extractIdFromMediaUrl(url) {
-    const urlObj = new URL(url);
-    let path = urlObj.pathname;
-    // if we have a leading slash
-    if (path.indexOf('/') === 0) {
-        path = path.substr(1);
-    }
-    if (path.indexOf(DOKU_BASE) === 0) {
-        path = path.substr(DOKU_BASE.length);
-    }
+    try {
+        const urlObj = new URL(url, location.href);
+        const base = new URL(DOKU_BASE, location.href);
+        if (urlObj.origin !== base.origin || !urlObj.pathname.startsWith(base.pathname)) return null;
+        const basePath = base.pathname;
+        let path = urlObj.pathname;
+        if (path.indexOf(basePath) === 0) path = path.slice(basePath.length);
+        path = path.replace(/^\//, '');
 
-    if (urlObj.searchParams.get('media') !== null) {
-        // no rewriting
-        return normalizeId(urlObj.searchParams.get('media'));
-    } else if (
-        path.indexOf('lib/exe/detail.php/') === 0 ||
-        path.indexOf('lib/exe/fetch.php/') === 0
-    ) {
-        // internally rewritten URL, cut off three segments
-        return normalizeId(path.split('/').slice(3).join(':'));
-    } else if (
-        path.indexOf('_media/') === 0 ||
-        path.indexOf('_detail/') === 0
-    ) {
-        // .htaccess rewritten URL, cut off one segment
-        return normalizeId(path.split('/').slice(1).join(':'));
-    }
+        if (urlObj.searchParams.get('media') !== null &&
+            ['lib/exe/detail.php', 'lib/exe/fetch.php', 'doku.php', ''].includes(path)) {
+            // no rewriting
+            const id = urlObj.searchParams.get('media');
+            if (!id || /^(?:[a-z][a-z\d+.-]*:\/\/|\/\/)/i.test(id)) return null;
+            return normalizeId(id);
+        } else if (
+            path.indexOf('lib/exe/detail.php/') === 0 ||
+            path.indexOf('lib/exe/fetch.php/') === 0
+        ) {
+            // internally rewritten URL, cut off three segments
+            return normalizeId(decodeURIComponent(path.split('/').slice(3).join(':')));
+        } else if (
+            path.indexOf('_media/') === 0 ||
+            path.indexOf('_detail/') === 0
+        ) {
+            // .htaccess rewritten URL, cut off one segment
+            return normalizeId(decodeURIComponent(path.split('/').slice(1).join(':')));
+        }
+    } catch (e) { /* Malformed URLs are not editable local media. */ }
+    return null;
 }
 
 /**
@@ -121,5 +144,5 @@ function extractIdFromMediaUrl(url) {
  * @return {string}
  */
 function normalizeId(id) {
-    return ':' + id.replace(/\//g, ":");
+    return ':' + id.replace(/\//g, ':').replace(/^:+/, '');
 }

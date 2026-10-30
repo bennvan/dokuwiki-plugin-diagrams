@@ -2,6 +2,7 @@ jQuery(function () {
     /* DOKUWIKI:include script/helpers.js */
     /* DOKUWIKI:include script/service.js */
     /* DOKUWIKI:include script/elements.js */
+    /* DOKUWIKI:include script/svg.js */
 
     // add diagram edit button to diagram SVGs included in wiki pages
     const $images = jQuery('object').filter('.diagrams-svg');
@@ -17,7 +18,8 @@ jQuery(function () {
 
     // callback to attach buttons to editable diagrams
     const attachButtons = function (result) {
-        const diagrams = JSON.parse(result);
+        const diagrams = result;
+        if (!Array.isArray(diagrams)) return;
         $images.each(function () {
             const id = extractIdFromMediaUrl(this.data);
             const $current = jQuery(this);
@@ -33,11 +35,7 @@ jQuery(function () {
     };
 
     // query backend about permissions and SVG properties before attaching edit buttons
-    jQuery.get(
-        DOKU_BASE + 'lib/exe/ajax.php',
-        ajaxData,
-        attachButtons
-    );
+    if (imageIds.length) jQuery.getJSON(DOKU_BASE + 'lib/exe/ajax.php', ajaxData, attachButtons);
 
     /**
      * Media manager
@@ -51,92 +49,69 @@ jQuery(function () {
     const isMMPopup = $mm_popup.length > 0;
     if (!isMMPage && !isMMPopup) return;
 
-    /* in the namespace tree add a link to create a new diagram */
-    const $mm_tree = jQuery("#media__tree");
-    const $createLink = jQuery('<a href="#">' + LANG.plugins.diagrams.createLink + '</a>')
-        .on('click', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            newDiagramForm().dialog({
-                title: LANG.plugins.diagrams.createLink,
-                width: 600,
-                appendTo: '.dokuwiki',
-                modal: true,
-                open: function () {
-                    const nsText = isMMPage ? jQuery('.panelHeader h3 strong').text() : jQuery('#media__ns').text();
-                    const ns = cleanNs(nsText);
-                    jQuery('#diagrams__current-ns').text(ns);
-                },
-                close: function () {
-                    // do not reuse the dialog
-                    // https://stackoverflow.com/a/2864783
-                    jQuery(this).dialog('destroy').remove();
-                }
-            });
-        });
-    $mm_tree.prepend($createLink);
+    const $fileList = isMMPage ? $mm_page.find('div.filelist').first() : jQuery('#media__content');
 
-    // attach edit button to detail view of SVG files
-    if (!isMMPage) return;
-    $mm_page.on('click', '.filelist .panelContent a', function (e) {
-
-        // observe div.file for mutations
-        const $df = jQuery('div.file');
-        const targetNode = $df[0];
-
-        // observe the target node descendants
-        const config = {childList: true, subtree: true};
-
-        // add edit diagram  button to file actions
-        const addEditButton = function (mutationsList, observer) {
-            for (let mutation of mutationsList) {
-                // div.file has been filled with new content (detail view)
-                if (mutation.type === 'childList') {
-                    const $svgLink = jQuery('a.mf_svg');
-                    // only add buttons to SVG files
-                    if ($svgLink.length !== 0) {
-                        const $actionsList = jQuery('ul.actions');
-                        // disconnect now so we don't observe the mutation we are about to trigger
-                        observer.disconnect();
-                        // FIXME why do they multiply when non-svg link is clicked before?!!!
-                        if ($actionsList.find('button.diagrams-btn').length === 0) {
-                            $actionsList.append(editDiagramButton($svgLink.html()));
-                        }
-                    }
-                }
+    function openCreateDialog(ns) {
+        newDiagramForm(ns).dialog({
+            title: LANG.plugins.diagrams.createLink,
+            width: Math.min(600, window.innerWidth - 32),
+            appendTo: '.dokuwiki, #media__manager',
+            modal: true,
+            close: function () {
+                jQuery(this).dialog('destroy').remove();
             }
-        };
+        });
+    }
 
-        const observer = new MutationObserver(addEditButton);
-        observer.observe(targetNode, config);
-    });
-});
-
-// open links in diagrams in the browser window instead of SVG frame
-// TODO this will not work with DokuWiki master as of February 2021 (contentDocument is null)
-jQuery(window).on('load', function() {
-    jQuery('object.diagrams-svg').each( function() {
-        const $svg   = jQuery(this.contentDocument).find('svg');
-        $svg.find('a').not('[target]').attr('target', '_parent').on('click',function (e) {
-            var target = jQuery(this).attr('xlink:href');
-            if (!target) return;
-            if (target.startsWith('#')){
+    function addCreateAction() {
+        // Bootstrap3 owns the Actions tab; other templates retain a standalone link.
+        if (isMMPage && typeof dw_template !== 'undefined' && dw_template.mediaActions) return;
+        if ($fileList.find('.diagrams-create-action').length) return;
+        const $link = jQuery('<a href="#"/>')
+            .text(LANG.plugins.diagrams.createLink)
+            .on('click', function (e) {
                 e.preventDefault();
-
-                var y;
-                var yOffset = 0; 
-                var navbar = document.getElementById('dw__navbar');
-                if (navbar) {
-                    yOffset = -navbar.offsetHeight; 
-                }
-                history.replaceState({}, '', window.location.href+target);
-                y = document.querySelector(target).getBoundingClientRect().top + window.pageYOffset + yOffset;
-                window.scrollTo({top: y, behavior: 'smooth'});
-            }
-        });
-        if (JSINFO.plugins.diagrams.xsvg_style) {
-            $svg.append("<link xmlns='http://www.w3.org/1999/xhtml' rel='stylesheet' type='text/css' href='/lib/plugins/diagrams/xsvg.css' />");
+                e.stopPropagation();
+                openCreateDialog(currentMediaNamespace());
+            });
+        const $tabs = $fileList.children('ul.tabs').first();
+        if ($tabs.length) {
+            jQuery('<li class="diagrams-create-action"/>').append($link).appendTo($tabs);
+        } else {
+            // The editor popup has no tab strip; keep the action with its files.
+            jQuery('<div class="diagrams-create-action"/>').append($link).prependTo($fileList);
         }
+    }
 
+    jQuery(document).on('bootstrap3:media-actions', function (event, actions) {
+        actions.push({label: LANG.plugins.diagrams.createLink, run: openCreateDialog});
     });
+    addCreateAction();
+    // Core replaces this panel when changing namespace or tabs.
+    new MutationObserver(addCreateAction).observe($fileList[0], {childList: true});
+
+    if (!isMMPage) return;
+    const $details = $mm_page.find('div.file').first();
+    let pendingId = null;
+    function addDetailEditButton() {
+        const $svgLink = $details.find('a.mediafile.mf_svg').first();
+        const id = $svgLink.length ? extractIdFromMediaUrl($svgLink[0].href) : null;
+        if (!id || $details.find('button.diagrams-btn').length || pendingId === id) return;
+        pendingId = id;
+        jQuery.getJSON(DOKU_BASE + 'lib/exe/ajax.php', {
+            call: 'plugin_diagrams', images: [id]
+        }, function (result) {
+            const editable = result;
+            if (!Array.isArray(editable)) return;
+            const $current = $details.find('a.mediafile.mf_svg').first();
+            if ($current.length && extractIdFromMediaUrl($current[0].href) === id &&
+                editable.includes(id) && !$details.find('button.diagrams-btn').length) {
+                jQuery('<li/>').append(editDiagramButton(id)).appendTo($details.find('ul.actions').first());
+            }
+        }).always(function () { if (pendingId === id) pendingId = null; });
+    }
+    // One observer per panel, rather than a new observer on every file click.
+    new MutationObserver(addDetailEditButton).observe($details[0], {childList: true, subtree: true});
+    addDetailEditButton();
+
 });
